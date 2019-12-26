@@ -8,11 +8,11 @@ import warnings
 
 dynamic_requires = []
 
-version = 0.2
+version = 0.1
 
 setup(
-    name='zengge',
-    version=0.2,
+    name='Zemismart',
+    version=0.1,
     url='https://github.com/GylleTanken/python-zemismart-roller-shade',
     packages=find_packages(),
     scripts=[],
