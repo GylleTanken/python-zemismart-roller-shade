@@ -4,37 +4,37 @@
 
 from bluepy import btle
 import struct
+import time
 
-
-class Delegate(btle.DefaultDelegate):
-    def __init__(self, zemismart):
-        self.zemismart = zemismart
-        btle.DefaultDelegate.__init__(self)
-
-    def handleNotification(self, handle, data):
-        print("Got data: " + str(data))
-        print("Got handle: " + str(handle))
-        if handle == self.zemismart.datahandle.getHandle() and data[0] == self.zemismart.response_start_byte:
-            print("Got cmd: " + str(data[1]))
-            if data[1] == self.zemismart.get_battery_cmd[0]:
-                battery = data[7]
-                print("Got battery: " + str(battery))
-                self.zemismart.save_battery(battery)
-            elif data[1] == self.zemismart.get_position_cmd[0]:
-                pos = data[5]
-                print("Got posisition: " + str(pos))
-                self.zemismart.save_position(pos)
-            elif data[1] == self.zemismart.finished_moving_cmd[0]:
-                pos = data[4]
-                print("Finished moving to position: " + str(pos))
-                self.zemismart.save_position(pos)
-
-
-
+#class Delegate(btle.DefaultDelegate):
+#    def __init__(self, zemismart):
+#        self.zemismart = zemismart
+#        btle.DefaultDelegate.__init__(self)
+#
+#    def handleNotification(self, handle, data):
+#        print("Got data: " + str(data))
+#        print("Got handle: " + str(handle))
+#        if handle == self.zemismart.datahandle.getHandle() and data[0] == self.zemismart.response_start_byte:
+#            print("Got cmd: " + str(data[1]))
+#            if data[1] == self.zemismart.get_battery_cmd[0]:
+#                battery = data[7]
+#                print("Got battery: " + str(battery))
+#                self.zemismart.save_battery(battery)
+#            elif data[1] == self.zemismart.get_position_cmd[0]:
+#                pos = data[5]
+#                print("Got posisition: " + str(pos))
+#                self.zemismart.save_position(pos)
+#            elif data[1] == self.zemismart.finished_moving_cmd[0]:
+#                pos = data[4]
+#                print("Finished moving to position: " + str(pos))
+#                self.zemismart.save_position(pos)
 
 
 
-class Zemismart:
+
+
+
+class Zemismart(btle.DefaultDelegate):
     
     datahandle_uuid = "fe51"
 
@@ -57,10 +57,29 @@ class Zemismart:
     def __init__(self, mac="02:4E:F0:E8:7F:63", pin=8888):
         self.mac = mac
         self.pin = pin
+        btle.DefaultDelegate.__init__(self)
+
+    def handleNotification(self, handle, data):
+        print("Got data: " + str(data))
+        print("Got handle: " + str(handle))
+        if handle == self.datahandle.getHandle() and data[0] == self.response_start_byte:
+            print("Got cmd: " + str(data[1]))
+            if data[1] == self.get_battery_cmd[0]:
+                battery = data[7]
+                print("Got battery: " + str(battery))
+                self.save_battery(battery)
+            elif data[1] == self.get_position_cmd[0]:
+                pos = data[5]
+                print("Got posisition: " + str(pos))
+                self.save_position(pos)
+            elif data[1] == self.finished_moving_cmd[0]:
+                pos = data[4]
+                print("Finished moving to position: " + str(pos))
+                self.save_position(pos)
     
     def connect(self):
         self.device = btle.Peripheral(self.mac, addrType=btle.ADDR_TYPE_PUBLIC)
-        self.device.setDelegate(Delegate(self))
+        self.device.withDelegate(self)
         handles = self.device.getCharacteristics()
         for handle in handles:
             if handle.uuid == self.datahandle_uuid:
@@ -108,4 +127,9 @@ class Zemismart:
 
     def save_battery(self, battery):
         self.battery = battery
+
+    def update(self):
+        self.send_Zemismart_packet(self.get_position_cmd, bytearray([0x01]))
+        self.send_Zemismart_packet(self.get_battery_cmd, bytearray([0x01]))
+        self.device.waitForNotifications(1.0)
 
