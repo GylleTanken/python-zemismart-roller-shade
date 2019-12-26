@@ -2,7 +2,7 @@
 A simple Python API for controlling Zemismart roller shade.
 
 ## Example use
-This will connect to the roller shade with the mac address "00:11:22:33:44:55" and the pin 8888, and open the shade.
+This will connect to the roller shade with the mac address "00:11:22:33:44:55" and the pin 8888, and open the shade. The connect method also sends the pin code to the device.
 ```
 import Zemismart
 
