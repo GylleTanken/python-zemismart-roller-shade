@@ -6,7 +6,7 @@ This will connect to the roller shade with the mac address "00:11:22:33:44:55" a
 ```
 import Zemismart
 
-shade = Zemismart.Zemismart("02:4E:F0:E8:7F:63", 8888)
+shade = Zemismart.Zemismart("00:11:22:33:44:55", 8888)
 shade.connect()
 shade.open()
 ```
