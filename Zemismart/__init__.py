@@ -60,7 +60,7 @@ class Zemismart(btle.DefaultDelegate):
                     self.datahandle = handle
             return self.login()
         except:
-            print("Could not connect to device with mac: " + self.address)
+            print("Could not connect to device with mac: " + self.mac)
             return False
 
     def login(self):
