@@ -31,6 +31,8 @@ class Zemismart(btle.DefaultDelegate):
         self.mac = mac
         self.pin = pin
         self.datahandle = None
+        self.battery = 0
+        self.position = 0
         btle.DefaultDelegate.__init__(self)
 
     def handleNotification(self, handle, data):
