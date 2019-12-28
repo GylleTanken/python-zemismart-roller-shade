@@ -49,13 +49,17 @@ class Zemismart(btle.DefaultDelegate):
                 self.save_position(pos)
     
     def connect(self):
-        self.device = btle.Peripheral(self.mac, addrType=btle.ADDR_TYPE_PUBLIC)
-        self.device.withDelegate(self)
-        handles = self.device.getCharacteristics()
-        for handle in handles:
-            if handle.uuid == self.datahandle_uuid:
-                self.datahandle = handle
-        self.login()
+        try:
+            self.device = btle.Peripheral(self.mac, addrType=btle.ADDR_TYPE_PUBLIC)
+            self.device.withDelegate(self)
+            handles = self.device.getCharacteristics()
+            for handle in handles:
+                if handle.uuid == self.datahandle_uuid:
+                    self.datahandle = handle
+            return self.login()
+        except:
+            print("Could not connect to device with mac: " + self._address)
+            return False
 
     def login(self):
        pin_data = bytearray(struct.pack(">H", self.pin))
@@ -89,17 +93,17 @@ class Zemismart(btle.DefaultDelegate):
         return bytearray([checksum])
 
     def open(self):
-        self.send_Zemismart_packet(self.move_cmd, self.open_data)
+        return self.send_Zemismart_packet(self.move_cmd, self.open_data)
 
     def close(self):
-        self.send_Zemismart_packet(self.move_cmd, self.close_data)
+        return self.send_Zemismart_packet(self.move_cmd, self.close_data)
 
     def stop(self):
-        self.send_Zemismart_packet(self.move_cmd, self.stop_data)
+        return self.send_Zemismart_packet(self.move_cmd, self.stop_data)
 
     def set_position(self, position):
         if position >= 0 and position <= 100:
-            self.send_Zemismart_packet(self.position_cmd, bytearray(struct.pack(">B", position)))
+            return self.send_Zemismart_packet(self.position_cmd, bytearray(struct.pack(">B", position)))
 
     def save_position(self, position):
         self.position = position
@@ -107,8 +111,12 @@ class Zemismart(btle.DefaultDelegate):
     def save_battery(self, battery):
         self.battery = battery
 
-    def update(self):
-        self.send_Zemismart_packet(self.get_position_cmd, bytearray([0x01]))
-        self.send_Zemismart_packet(self.get_battery_cmd, bytearray([0x01]))
-        self.device.waitForNotifications(1.0)
+    def update(self): 
+        if self.send_Zemismart_packet(self.get_position_cmd, bytearray([0x01])) == False:
+            return False
+        elif self.send_Zemismart_packet(self.get_battery_cmd, bytearray([0x01])) == False:
+            return False
+        else:
+            self.device.waitForNotifications(1.0)
+            return True
 
