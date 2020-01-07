@@ -5,7 +5,7 @@
 from bluepy import btle
 import struct
 import time
-
+import threading
 
 class Zemismart(btle.DefaultDelegate):
     
@@ -35,12 +35,12 @@ class Zemismart(btle.DefaultDelegate):
         self.datahandle = None
         self.battery = 0
         self.position = 0
+        self.mutex = threading.Lock()
         btle.DefaultDelegate.__init__(self)
 
 
-
     def __enter__(self):
-
+        self.mutex.acquire()
         self.device = btle.Peripheral()
         self.device.withDelegate(self)
 
@@ -75,9 +75,14 @@ class Zemismart(btle.DefaultDelegate):
 
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.device:
-            self.device.disconnect()
-            self.device = None
+        try:
+            if self.device:
+                self.device.disconnect()
+                self.device = None
+        except Exception as ex:
+            print("Error disconnecting: " + str(ex))
+        finally:
+            self.mutex.release()
 
 
 
