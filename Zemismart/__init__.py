@@ -27,13 +27,59 @@ class Zemismart(btle.DefaultDelegate):
     close_data = bytearray.fromhex('ee')
     stop_data = bytearray.fromhex('cc')
 
-    def __init__(self, mac="02:4E:F0:E8:7F:63", pin=8888):
+    def __init__(self, mac="02:4E:F0:E8:7F:63", pin=8888, max_connect_time=30):
         self.mac = mac
         self.pin = pin
+        self.max_connect_time = max_connect_time
+        self.device = None
         self.datahandle = None
         self.battery = 0
         self.position = 0
         btle.DefaultDelegate.__init__(self)
+
+
+
+    def __enter__(self):
+
+        self.device = btle.Peripheral()
+        self.device.withDelegate(self)
+
+        start_time = time.time()
+        connection_try_count = 0
+
+        while True:
+            connection_try_count += 1
+            if connection_try_count > 1:
+                print("Retrying to connect to device with mac: " + self.mac + ", try number: " + str(connection_try_count))
+            try:
+                self.device.connect(self.mac, addrType=btle.ADDR_TYPE_PUBLIC)
+                break
+            except btle.BTLEException as ex:
+                print("Could not connect to device with mac: " + self.mac + ", error: " + str(ex))
+                if time.time() - start_time >= self.max_connect_time:
+                    print("Connection timeout")
+                    raise
+
+        handles = self.device.getCharacteristics()
+        for handle in handles:
+            if handle.uuid == self.datahandle_uuid:
+                self.datahandle = handle
+
+        if self.datahandle == None:
+            self.device = None
+            raise Exception("Unable to find all handles")
+
+        self.login()
+
+        return self
+
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.device:
+            self.device.disconnect()
+            self.device = None
+
+
 
     def handleNotification(self, handle, data):
         if handle == self.datahandle.getHandle() and data[0] == self.response_start_byte:
@@ -50,42 +96,26 @@ class Zemismart(btle.DefaultDelegate):
                 print("Finished moving to position: " + str(pos))
                 self.save_position(pos)
     
-    def connect(self):
-        try:
-            self.device = btle.Peripheral(self.mac, addrType=btle.ADDR_TYPE_PUBLIC)
-            self.device.withDelegate(self)
-            handles = self.device.getCharacteristics()
-            for handle in handles:
-                if handle.uuid == self.datahandle_uuid:
-                    self.datahandle = handle
-            return self.login()
-        except:
-            print("Could not connect to device with mac: " + self.mac)
-            return False
 
     def login(self):
        pin_data = bytearray(struct.pack(">H", self.pin))
        self.send_Zemismart_packet(self.pin_cmd, pin_data)
 
-    def send_BLE_packet(self, handle, data):
-        initial = time.time()
-        while True:
-            if time.time() - initial >= 10:
-                return False
-            try:
-                return handle.write(bytes(data), withResponse=False)
-            except:
-                self.connect()
+    def send_BLE_packet(self, handle, data, wait_for_notification_time=0):
+        write_response = handle.write(bytes(data), withResponse=False)
+        if wait_for_notification_time > 0:
+            self.device.waitForNotifications(wait_for_notification_time)
+        return write_response
 
-    def send_Zemismart_packet(self, command, data):
+    def send_Zemismart_packet(self, command, data, wait_for_notification_time=0):
         lenght = bytearray([len(data)])
         data_without_checksum = self.start_bytes + command + lenght + data
         data_with_checksum = data_without_checksum + self.calculate_checksum(data_without_checksum)
-        if self.datahandle is None:
-            print("datahandle is not defined. Did you call connect()?")
+        if self.datahandle is None or self.device is None:
+            print("datahandle or device is not defined. Did you use with statement?")
             return False
         else:
-            return self.send_BLE_packet(self.datahandle, data_with_checksum)
+            return self.send_BLE_packet(self.datahandle, data_with_checksum, wait_for_notification_time)
 
     def calculate_checksum(self, data):
         checksum = 0
@@ -116,9 +146,8 @@ class Zemismart(btle.DefaultDelegate):
     def update(self): 
         if self.send_Zemismart_packet(self.get_position_cmd, bytearray([0x01])) == False:
             return False
-        elif self.send_Zemismart_packet(self.get_battery_cmd, bytearray([0x01])) == False:
+        elif self.send_Zemismart_packet(self.get_battery_cmd, bytearray([0x01]), 2) == False:
             return False
         else:
-            self.device.waitForNotifications(1.0)
             return True
 
