@@ -41,40 +41,44 @@ class Zemismart(btle.DefaultDelegate):
 
     def __enter__(self):
         self.mutex.acquire()
-        self.device = btle.Peripheral()
-        self.device.withDelegate(self)
 
-        start_time = time.time()
-        connection_try_count = 0
+        try:
+            self.device = btle.Peripheral()
+            self.device.withDelegate(self)
 
-        while True:
-            connection_try_count += 1
-            if connection_try_count > 1:
-                print("Retrying to connect to device with mac: " + self.mac + ", try number: " + str(connection_try_count))
-            try:
-                self.device.connect(self.mac, addrType=btle.ADDR_TYPE_PUBLIC)
-                break
-            except btle.BTLEException as ex:
-                print("Could not connect to device with mac: " + self.mac + ", error: " + str(ex))
-                if time.time() - start_time >= self.max_connect_time:
-                    print("Connection timeout")
-                    raise
+            start_time = time.time()
+            connection_try_count = 0
 
-        handles = self.device.getCharacteristics()
-        for handle in handles:
-            if handle.uuid == self.datahandle_uuid:
-                self.datahandle = handle
+            while True:
+                connection_try_count += 1
+                if connection_try_count > 1:
+                    print("Retrying to connect to device with mac: " + self.mac + ", try number: " + str(connection_try_count))
+                try:
+                    self.device.connect(self.mac, addrType=btle.ADDR_TYPE_PUBLIC)
+                    break
+                except btle.BTLEException as ex:
+                    print("Could not connect to device with mac: " + self.mac + ", error: " + str(ex))
+                    if time.time() - start_time >= self.max_connect_time:
+                        print("Connection timeout")
+                        raise
 
-        if self.datahandle == None:
-            self.device = None
-            raise Exception("Unable to find all handles")
+            handles = self.device.getCharacteristics()
+            for handle in handles:
+                if handle.uuid == self.datahandle_uuid:
+                    self.datahandle = handle
 
-        self.login()
+            if self.datahandle == None:
+                self.device = None
+                raise Exception("Unable to find all handles")
 
+            self.login()
+        except:
+            self.__exit__()
+            raise
         return self
 
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         try:
             if self.device:
                 self.device.disconnect()

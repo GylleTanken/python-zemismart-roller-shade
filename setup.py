@@ -8,13 +8,14 @@ import warnings
 
 dynamic_requires = []
 
-version = '0.3.1'
+version = '0.3.2'
 
 setup(
     name='Zemismart',
     version=version,
     url='https://github.com/GylleTanken/python-zemismart-roller-shade',
     packages=find_packages(),
+    install_requires = ['bluepy==1.3.0']
     scripts=[],
     description='Python API for controlling Zemismart Roller Shade',
     classifiers=[
