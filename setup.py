@@ -15,7 +15,7 @@ setup(
     version=version,
     url='https://github.com/GylleTanken/python-zemismart-roller-shade',
     packages=find_packages(),
-    install_requires = ['bluepy==1.3.0']
+    install_requires = ['bluepy==1.3.0'],
     scripts=[],
     description='Python API for controlling Zemismart Roller Shade',
     classifiers=[
