@@ -43,7 +43,7 @@ class Zemismart(btle.DefaultDelegate):
                 self.save_battery(battery)
             elif data[1] == self.get_position_cmd[0]:
                 pos = data[5]
-                print("Got posisition: " + str(pos))
+                print("Got position: " + str(pos))
                 self.save_position(pos)
             elif data[1] == self.finished_moving_cmd[0]:
                 pos = data[4]
