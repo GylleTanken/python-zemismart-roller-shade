@@ -8,12 +8,12 @@ import warnings
 
 dynamic_requires = []
 
-version = '0.2.2'
+version = '0.2.1'
 
 setup(
     name='Zemismart',
     version=version,
-    url='https://github.com/stcbus/python-zemismart-roller-shad',
+    url='https://github.com/GylleTanken/python-zemismart-roller-shade',
     packages=find_packages(),
     scripts=[],
     description='Python API for controlling Zemismart Roller Shade',
