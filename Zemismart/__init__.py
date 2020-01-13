@@ -62,6 +62,12 @@ class Zemismart(btle.DefaultDelegate):
         except:
             print("Could not connect to device with mac: " + self.mac)
             return False
+    def disconnect(self):
+        try:
+            self.device.disconnect()
+        except:
+            print("Could not disconnect with mac: " + self.mac)
+            return False
 
     def login(self):
        pin_data = bytearray(struct.pack(">H", self.pin))
