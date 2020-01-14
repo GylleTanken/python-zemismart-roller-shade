@@ -27,7 +27,7 @@ class Zemismart(btle.DefaultDelegate):
     close_data = bytearray.fromhex('ee')
     stop_data = bytearray.fromhex('cc')
 
-    def __init__(self, mac="02:4E:F0:E8:7F:63", pin=8888, max_connect_time=30):
+    def __init__(self, mac="02:4E:F0:E8:7F:63", pin=8888, max_connect_time=30, withMutex=False):
         self.mac = mac
         self.pin = pin
         self.max_connect_time = max_connect_time
@@ -35,12 +35,34 @@ class Zemismart(btle.DefaultDelegate):
         self.datahandle = None
         self.battery = 0
         self.position = 0
-        self.mutex = threading.Lock()
+        self.withMutex=withMutex
+        if self.withMutex:
+            self.mutex = threading.Lock()
         btle.DefaultDelegate.__init__(self)
 
 
     def __enter__(self):
-        self.mutex.acquire()
+        self.connect()
+        return self
+
+
+    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
+        self.disconnect()
+
+    def disconnect(self):
+        try:
+            if self.device:
+                self.device.disconnect()
+                self.device = None
+        except Exception as ex:
+            print("Could not disconnect with mac: " + self.mac + ", Error: "  + str(ex))
+        finally:
+            if self.withMutex:
+                self.mutex.release()
+
+    def connect(self):
+        if self.withMutex:
+            self.mutex.acquire()
 
         try:
             self.device = btle.Peripheral()
@@ -73,21 +95,8 @@ class Zemismart(btle.DefaultDelegate):
 
             self.login()
         except:
-            self.__exit__()
+            self.disconnect()
             raise
-        return self
-
-
-    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
-        try:
-            if self.device:
-                self.device.disconnect()
-                self.device = None
-        except Exception as ex:
-            print("Error disconnecting: " + str(ex))
-        finally:
-            self.mutex.release()
-
 
 
     def handleNotification(self, handle, data):
