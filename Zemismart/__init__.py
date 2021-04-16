@@ -28,7 +28,7 @@ class Zemismart(btle.DefaultDelegate):
     close_data = bytearray.fromhex('ee')
     stop_data = bytearray.fromhex('cc')
 
-    def __init__(self, mac="02:4E:F0:E8:7F:63", pin=8888, max_connect_time=30, withMutex=False):
+    def __init__(self, mac="02:4E:F0:E8:7F:63", pin=8888, max_connect_time=30, withMutex=False, iface=None):
         self.mac = mac
         self.pin = pin
         self.max_connect_time = max_connect_time
@@ -38,6 +38,7 @@ class Zemismart(btle.DefaultDelegate):
         self.position = 0
         self.withMutex = withMutex
         self.last_command_status = None
+        self.iface = iface
         if self.withMutex:
             self.mutex = threading.Lock()
         btle.DefaultDelegate.__init__(self)
@@ -77,7 +78,7 @@ class Zemismart(btle.DefaultDelegate):
                     print("Retrying to connect to device with mac: " +
                           self.mac + ", try number: " + str(connection_try_count))
                 try:
-                    self.device.connect(self.mac, addrType=btle.ADDR_TYPE_PUBLIC)
+                    self.device.connect(self.mac, addrType=btle.ADDR_TYPE_PUBLIC, iface=self.iface)
                     break
                 except btle.BTLEException as ex:
                     print("Could not connect to device with mac: " + self.mac + ", error: " + str(ex))
