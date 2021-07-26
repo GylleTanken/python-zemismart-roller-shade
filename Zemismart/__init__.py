@@ -105,22 +105,24 @@ class Zemismart(btle.DefaultDelegate):
             if data[1] == self.get_battery_cmd[0]:
                 battery = data[7]
                 self.save_battery(battery)
+                self.last_command_status = True
             elif data[1] == self.get_position_cmd[0]:
                 pos = data[5]
                 self.save_position(pos)
+                self.last_command_status = True
             elif data[1] == self.finished_moving_cmd[0]:
                 pos = data[4]
                 self.save_position(pos)
+                self.last_command_status = True
             elif data[1] == 0x41:  # notify position
                 pos = data[4]
                 self.save_position(pos)
-            elif data[1] == self.set_position_cmd[0] or data[1] == self.pin_cmd[0] or data[1] == self.move_cmd[0]:
+                self.last_command_status = True
+            elif data[1] in (self.set_position_cmd[0], self.pin_cmd[0], self.move_cmd[0]):
                 if data[3] == 0x5A:
                     self.last_command_status = True
                 elif data[3] == 0xA5:
                     self.last_command_status = False
-                else:
-                    self.last_command_status = None
 
     def login(self):
         pin_data = bytearray(struct.pack(">H", self.pin))
@@ -129,10 +131,10 @@ class Zemismart(btle.DefaultDelegate):
     def send_BLE_packet(self, handle, data, wait_for_notification_time=0):
         write_response = handle.write(bytes(data), withResponse=False)
         if wait_for_notification_time > 0:
-            if self.device.waitForNotifications(wait_for_notification_time):
-                return self.last_command_status is True
-            else:
-                return False
+            start_time = time.time()
+            while self.last_command_status is None and time.time() - wait_for_notification_time <= start_time:
+                if self.device.waitForNotifications(wait_for_notification_time) and self.last_command_status is not None:
+                    return self.last_command_status is True
         return write_response
 
     def send_Zemismart_packet(self, command, data, wait_for_notification_time=2):
