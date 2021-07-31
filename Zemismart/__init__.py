@@ -24,6 +24,8 @@ class Zemismart(btle.DefaultDelegate):
     get_position_cmd = bytearray.fromhex('a7')
     finished_moving_cmd = bytearray.fromhex('a1')
 
+    notify_position_cmd = bytearray.fromhex('41')
+
     open_data = bytearray.fromhex('dd')
     close_data = bytearray.fromhex('ee')
     stop_data = bytearray.fromhex('cc')
@@ -110,11 +112,7 @@ class Zemismart(btle.DefaultDelegate):
                 pos = data[5]
                 self.save_position(pos)
                 self.last_command_status = True
-            elif data[1] == self.finished_moving_cmd[0]:
-                pos = data[4]
-                self.save_position(pos)
-                self.last_command_status = True
-            elif data[1] == 0x41:  # notify position
+            elif data[1] in (self.finished_moving_cmd[0], self.notify_position_cmd[0]):
                 pos = data[4]
                 self.save_position(pos)
                 self.last_command_status = True
