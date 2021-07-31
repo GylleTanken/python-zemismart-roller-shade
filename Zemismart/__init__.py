@@ -126,14 +126,8 @@ class Zemismart(btle.DefaultDelegate):
         pin_data = bytearray(struct.pack(">H", self.pin))
         self.send_Zemismart_packet(self.pin_cmd, pin_data)
 
-    def send_BLE_packet(self, handle, data, wait_for_notification_time=0):
-        write_response = handle.write(bytes(data), withResponse=False)
-        if wait_for_notification_time > 0:
-            start_time = time.time()
-            while self.last_command_status is None and time.time() - wait_for_notification_time <= start_time:
-                if self.device.waitForNotifications(wait_for_notification_time) and self.last_command_status is not None:
-                    return self.last_command_status is True
-        return write_response
+    def send_BLE_packet(self, handle, data):
+        return handle.write(bytes(data), withResponse=False)
 
     def send_Zemismart_packet(self, command, data, wait_for_notification_time=2):
         self.last_command_status = None
@@ -144,7 +138,14 @@ class Zemismart(btle.DefaultDelegate):
             print("datahandle or device is not defined. Did you use with statement?")
             return False
         else:
-            return self.send_BLE_packet(self.datahandle, data_with_checksum, wait_for_notification_time)
+            write_result = self.send_BLE_packet(self.datahandle, data_with_checksum, wait_for_notification_time)
+            if wait_for_notification_time > 0:
+                start_time = time.time()
+                while self.last_command_status is None and time.time() - wait_for_notification_time <= start_time:
+                    if self.device.waitForNotifications(wait_for_notification_time) and self.last_command_status is not None:
+                        return self.last_command_status is True
+                return False
+            return write_result
 
     def calculate_checksum(self, data):
         checksum = 0
