@@ -23,10 +23,12 @@ class Zemismart(btle.DefaultDelegate):
     set_position_cmd = bytearray.fromhex('0d')
 
     get_battery_cmd = bytearray.fromhex('a2')
-    get_position_cmd = bytearray.fromhex('a7')
+    get_status_cmd = bytearray.fromhex('a7')
     finished_moving_cmd = bytearray.fromhex('a1')
+    update_timer_cmd = bytearray.fromhex('15')
 
-    notify_position_cmd = bytearray.fromhex('41')
+    get_timers_cmd = bytearray.fromhex('a8')
+    unknown_cmd_a9 = bytearray.fromhex('a9')
 
     open_data = bytearray.fromhex('dd')
     close_data = bytearray.fromhex('ee')
@@ -43,6 +45,8 @@ class Zemismart(btle.DefaultDelegate):
         self.withMutex = withMutex
         self.last_command_status = None
         self.iface = iface
+        self.timers = []
+        self._get_status_responses = set()
         if self.withMutex:
             self.mutex = threading.Lock()
         btle.DefaultDelegate.__init__(self)
@@ -110,19 +114,38 @@ class Zemismart(btle.DefaultDelegate):
                 battery = data[7]
                 self.save_battery(battery)
                 self.last_command_status = True
-            elif data[1] == self.get_position_cmd[0]:
+            elif data[1] == self.get_status_cmd[0]:
                 pos = data[5]
                 self.save_position(pos)
-                self.last_command_status = True
-            elif data[1] in (self.finished_moving_cmd[0], self.notify_position_cmd[0]):
+                self._get_status_responses.add(data[1])
+                self._check_full_status_received()
+            elif data[1] == self.finished_moving_cmd[0]:
                 pos = data[4]
                 self.save_position(pos)
                 self.last_command_status = True
-            elif data[1] in (self.set_position_cmd[0], self.pin_cmd[0], self.move_cmd[0], self.sync_time_cmd[0]):
-                if data[3] == 0x5A:
+            elif data[1] == self.unknown_cmd_a9[0]:
+                self._get_status_responses.add(data[1])
+                self._check_full_status_received()
+            elif data[1] == self.get_timers_cmd[0]:
+                self._get_status_responses.add(data[1])
+                self.timers = Timer.from_raw_data(self, data)
+                self._check_full_status_received()
+            elif data[1] in (self.set_position_cmd[0], self.pin_cmd[0], self.move_cmd[0], self.update_timer_cmd[0], self.sync_time_cmd[0]):
+                # It's very likely that this byte is incorrectly interpreted: 0xA5 is sent in response to successfull timer deletion
+                if data[3] == 0x5A or (data[3] == 0xA5 and data[1] == self.update_timer_cmd[0]):
                     self.last_command_status = True
                 elif data[3] == 0xA5:
                     self.last_command_status = False
+
+    def _check_full_status_received(self):
+        """
+        Command 0xA7 (get_status) yields three responses from the device. We can't treat the command result as
+        a success, unless we have received all of them.
+        This method checks that since the last update() call, where self._get_status_responses is reset, we
+        received all the required responses.
+        """
+        if self._get_status_responses.issuperset({self.get_status_cmd[0], self.get_timers_cmd[0], self.unknown_cmd_a9[0]}):
+            self.last_command_status = True
 
     def login(self):
         pin_data = bytearray(struct.pack(">H", self.pin))
@@ -186,9 +209,236 @@ class Zemismart(btle.DefaultDelegate):
         self.battery = battery
 
     def update(self):
-        if not self.send_Zemismart_packet(self.get_position_cmd, bytearray([0x01]), 1):
+        self._get_status_responses.clear()
+        if not self.send_Zemismart_packet(self.get_status_cmd, bytearray([0x01]), 1):
             return False
         elif not self.send_Zemismart_packet(self.get_battery_cmd, bytearray([0x01]), 1):
             return False
         else:
             return True
+
+
+class Timer:
+    REPEAT_SUNDAY = 0x01
+    REPEAT_MONDAY = 0x02
+    REPEAT_TUESDAY = 0x04
+    REPEAT_WEDNESDAY = 0x08
+    REPEAT_THURSDAY = 0x10
+    REPEAT_FRIDAY = 0x20
+    REPEAT_SATURDAY = 0x40
+
+    REPEAT_EVERY_DAY = REPEAT_SUNDAY | REPEAT_MONDAY | REPEAT_TUESDAY | REPEAT_WEDNESDAY | REPEAT_THURSDAY \
+        | REPEAT_FRIDAY | REPEAT_SATURDAY
+
+    @classmethod
+    def from_raw_data(cls, device, data):
+        ret = []
+
+        # Single timer takes 5 bytes
+        for timer_id in range(0, int(int(data[2]) / 5)):
+            timer_data_start = 3 + timer_id * 5
+            hours = int(data[timer_data_start + 3])
+            if hours > 0:
+                # I'm extremely unsure about this, but my devices report 00 for midnight,
+                # 02 for 1AM, 09 for 8am and so on.
+                hours -= 1
+            ret.append(cls(
+                bool(data[timer_data_start]),
+                int(data[timer_data_start + 1]),
+                int(data[timer_data_start + 2]),
+                hours,
+                int(data[timer_data_start + 4]),
+                timer_id,
+                device
+            ))
+
+        return ret
+
+    def __init__(self, enabled, target_position, repeats, hours, minutes, timer_id=None, device=None):
+        """
+        Parameters:
+            enabled (bool): defines whether the timer is enabled or not
+            target_position (int): desired shares target position
+            repeats (int): day when the timer should be repeated (use `binary or` to create desired combination,
+                            e.g. `Zemismart.Timer.REPEAT_SUNDAY | Zemismart.Timer.REPEAT_FRIDAY`)
+            hours (int): hour when the timer should trigger
+            minutes (int): minute when the timer should trigger
+        """
+        if type(enabled) is not bool:
+            raise AttributeError('`enabled` must be bool')
+        self._enabled = enabled
+
+        if type(target_position) is not int or not (0 <= target_position <= 100):
+            raise AttributeError('`target_position` must be integer between 0 and 100')
+        self._target_position = target_position
+
+        if type(repeats) is not int or repeats > self.REPEAT_EVERY_DAY:
+            raise AttributeError('`repeats` must be integer less than %d' % self.REPEAT_EVERY_DAY)
+        self._repeats = repeats
+
+        if type(hours) is not int or not (0 <= hours <= 23):
+            raise AttributeError('`hours` must be integer between 0 and 23')
+        self._hours = hours
+
+        if type(minutes) is not int or not (0 <= minutes <= 59):
+            raise AttributeError('`minutes` must be integer between 0 and 59')
+        self._minutes = minutes
+
+        self._timer_id = timer_id
+        self._device = device
+
+    def _verify_timer_can_be_saved(self, device):
+        if not device and not self._device:
+            raise AttributeError('Can\'t save timer before assigning it to a device')
+
+    @classmethod
+    def _update_timer(cls, device, timer_id, is_enabled=False, target_position=0, repeats=0, hours=0, minutes=0, action=0):
+        """
+        Sends the update command to the AM43 device. There're two known actions: `0` is update and `1` is delete.
+        """
+        return device.send_Zemismart_packet(device.update_timer_cmd,
+                                            bytearray([timer_id + 1, action, int(is_enabled), target_position,
+                                                       repeats,
+                                                       hours if hours == 0 else hours + 1,
+                                                       minutes]),
+                                            1)
+
+    def _select_device(self, device):
+        """
+        Returns the device provided as a method argument, if any, and self._device otherwise.
+        """
+        if device:
+            return device
+        return self._device
+
+    def remove(self):
+        if self._timer_id is None:
+            raise ValueError('Unable to remove timer that wasn\'t assigned to a device')
+
+        self._verify_timer_can_be_saved(None)
+
+        if self._timer_id >= len(self._device.timers):
+            raise ValueError('Trying to remove unknown timer')
+
+        ret = self._update_timer(self._device, self._timer_id, action=1)
+
+        if ret:
+            del self._device.timers[self._timer_id]
+
+            timer_id = 0
+            for timer in self._device.timers:
+                timer._timer_id = timer_id
+                timer_id += 1
+
+            self._device = None
+            self._timer_id = None
+
+        return ret
+
+    def save(self, device=None):
+        self._verify_timer_can_be_saved(device)
+        if len(self._select_device(device).timers) >= 4:
+            raise ValueError('You can have only 4 timers')
+
+        timer_id = self._timer_id
+
+        if device is not None:
+            timer_id = len(device.timers)
+        elif timer_id is None:
+            timer_id = len(self._device.timers)
+        elif timer_id >= len(self._device.timers):
+            raise ValueError('Trying to update unknown timer')
+
+        ret = self._update_timer(self._select_device(device), timer_id, self._enabled, self._target_position,
+                                 self._repeats, self._hours, self._minutes)
+
+        if ret:
+            self._device = self._select_device(device)
+            self._timer_id = timer_id
+
+            if len(self._device.timers) - 1 >= timer_id:
+                self._device.timers[timer_id] = self
+            else:
+                self._device.timers.append(self)
+
+        return ret
+
+    def _update_if_assigned(self):
+        if self._device and self._timer_id:
+            return self.save()
+        return None
+
+    def disable(self):
+        self._enabled = False
+        return self._update_if_assigned()
+
+    def enable(self):
+        self._enabled = True
+        return self._update_if_assigned()
+
+    def set_repeats(self, repeats):
+        self._repeats = repeats
+        return self._update_if_assigned()
+
+    def set_time(self, hours, minutes):
+        if not 0 <= hours <= 23:
+            raise ValueError('The value must be between 0 and 23')
+
+        if not 0 <= minutes <= 59:
+            raise ValueError('The value must be between 0 and 59')
+
+        self._minutes = minutes
+        self._hours = hours
+
+        return self._update_if_assigned()
+
+    def __repr__(self):
+        ret = ''
+
+        if self._device is None:
+            ret += 'Unassigned'
+        else:
+            ret += 'Assigned'
+
+        ret += ' '
+
+        if self._enabled:
+            ret += 'active'
+        else:
+            ret += 'inactive'
+
+        ret += ' timer'
+
+        if self._timer_id is None:
+            ret += ' w/o id'
+        else:
+            ret += '#%d' % self._timer_id
+
+        ret += ': set to %s%% at %02d:%02d ' % (self._target_position, self._hours, self._minutes)
+
+        if self._repeats:
+            ret += 'on '
+            repeats = []
+            if self._repeats == self.REPEAT_EVERY_DAY:
+                repeats.append('everyday')
+            else:
+                if self._repeats & self.REPEAT_MONDAY:
+                    repeats.append('Monday')
+                if self._repeats & self.REPEAT_TUESDAY:
+                    repeats.append('Tuesday')
+                if self._repeats & self.REPEAT_WEDNESDAY:
+                    repeats.append('Wednesday')
+                if self._repeats & self.REPEAT_THURSDAY:
+                    repeats.append('Thursday')
+                if self._repeats & self.REPEAT_FRIDAY:
+                    repeats.append('Friday')
+                if self._repeats & self.REPEAT_SATURDAY:
+                    repeats.append('Saturday')
+                if self._repeats & self.REPEAT_SUNDAY:
+                    repeats.append('Sunday')
+
+            ret += ' + '.join(repeats)
+        else:
+            ret += 'NEVER REPEAT'
+
+        return ret
