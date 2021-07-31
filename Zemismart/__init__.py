@@ -138,7 +138,7 @@ class Zemismart(btle.DefaultDelegate):
             print("datahandle or device is not defined. Did you use with statement?")
             return False
         else:
-            write_result = self.send_BLE_packet(self.datahandle, data_with_checksum, wait_for_notification_time)
+            write_result = self.send_BLE_packet(self.datahandle, data_with_checksum)
             if wait_for_notification_time > 0:
                 start_time = time.time()
                 while self.last_command_status is None and time.time() - wait_for_notification_time <= start_time:
