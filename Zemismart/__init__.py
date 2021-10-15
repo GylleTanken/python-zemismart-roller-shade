@@ -5,6 +5,7 @@
 import struct
 import threading
 import time
+import datetime
 
 from bluepy import btle
 
@@ -17,6 +18,7 @@ class Zemismart(btle.DefaultDelegate):
     start_bytes = bytearray.fromhex('00ff00009a')
 
     pin_cmd = bytearray.fromhex('17')
+    sync_time_cmd = bytearray.fromhex('14')
     move_cmd = bytearray.fromhex('0a')
     set_position_cmd = bytearray.fromhex('0d')
 
@@ -116,7 +118,7 @@ class Zemismart(btle.DefaultDelegate):
                 pos = data[4]
                 self.save_position(pos)
                 self.last_command_status = True
-            elif data[1] in (self.set_position_cmd[0], self.pin_cmd[0], self.move_cmd[0]):
+            elif data[1] in (self.set_position_cmd[0], self.pin_cmd[0], self.move_cmd[0], self.sync_time_cmd[0]):
                 if data[3] == 0x5A:
                     self.last_command_status = True
                 elif data[3] == 0xA5:
@@ -162,6 +164,16 @@ class Zemismart(btle.DefaultDelegate):
 
     def stop(self):
         return self.send_Zemismart_packet(self.move_cmd, self.stop_data)
+
+    def sync_time(self, tz=None):
+        now = datetime.datetime.now(tz)
+        data = bytearray()
+        # DoW is expected to be an in between 0 and 6, where 0 is Sunday and 6 is Saturday
+        data.append(int(now.strftime('%w')))
+        data.append(now.hour)
+        data.append(now.minute)
+        data.append(now.second)
+        return self.send_Zemismart_packet(self.move_cmd, data)
 
     def set_position(self, position):
         if 0 <= position <= 100:
